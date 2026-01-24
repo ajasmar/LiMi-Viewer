@@ -1,5 +1,5 @@
 // Model JSON
-const DATA_URL = `LiMi_Model.json`;
+const DATA_URL = `../data/LiMi_Model.json`;
 
 // Fetch root object and cache-bust via timestamp.
 function loadData() {
@@ -392,5 +392,6 @@ function redraw() {
     centerNode(root);
   }).catch(console.error);
 }
+
 
 redraw();
