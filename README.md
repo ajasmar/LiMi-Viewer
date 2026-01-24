@@ -3,6 +3,9 @@ An interactive web-based visualization tool that for viewing the LiMi Metadata M
 
 The tool consists of a D3.js-based collapsible node-linked graph built using a hierarchical JSON input. The JSON input is created using a python script which parses the XSD (XML Schema Definition) file.
 
+The current version was used to parse the latest XSD available from the NBOMicroscopyMetadataSpecs github 
+(Model/in progress/v02-10/NBO_MicroscopyMetadataSpecifications_ALL.xsd)
+
 ---
 # Structure
 ```text
