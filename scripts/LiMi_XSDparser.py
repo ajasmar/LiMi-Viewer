@@ -286,10 +286,11 @@ def main():
     else:
         # Look for defaults in current directory if no arguments are given
         print("Usage: python script.py <input_path> <output_path>")
-        print("Checking current directory for 'XMLSchema1.xsd'...")
-        default_in = "LiMi_XMLSchema.xsd"
-        default_out = "LiMi_Model.json"
+        print("Checking current directory for 'LiMi_XMLSchema.xsd'...")
+        default_in = "schemas/LiMi_XMLSchema.xsd"
+        default_out = "data/LiMi_Model.json"
         run_parser(default_in, default_out)
 
 if __name__ == "__main__":
+
     main()
