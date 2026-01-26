@@ -12,9 +12,10 @@ javascript tool and display as an interactive graph.
 - Abstract elements have a "base" child inheriting the head's complexType content
 - Descriptions come from <xsd:annotation><xsd:documentation>
     - If a line starts with "Description=", use the part after '=' to populate
-    - This is the incosnsistency between the old and new/modified schemas
+    - This is the incosnsistency between the old and new/modified elements
+      which then requires merging at the end
 - Tier number is pulled if present in the documentation tags
-- At the end, merge all first-tier elements into OME root node
+- At the end, merge all first-tier elements into the OME/LiMi root node
 - Apply coloring based on node names (this still needs development)
 - Parsing of names to be more human readable:
     - Remove leading '@'
@@ -24,51 +25,79 @@ javascript tool and display as an interactive graph.
 import re
 import sys
 import json
-import lxml.etree as ET
+import lxml.etree   as ET
 from   pathlib      import Path
 from   typing       import Optional, Dict, List, Set
 
+""" ------------------ Configuration and Styling Variables -------------------- """
 
-# --- Configuration & Styling ---
 XSD_NS = "http://www.w3.org/2001/XMLSchema"
-QN = lambda local: f"{{{XSD_NS}}}{local}"
+QN = lambda local: f"{{{XSD_NS}}}{local}" # Qualified Name (QName) helper
 
-STYLE_MAP = {
-    "OME": "#c6e46a",
-    "Instrument": "#84a12f",
-    "Image": "#E5828C",
-    "DEFAULT": "#4b6cb7"
+# Defined hex color mapping for categorical visualization
+# This is where I was having issues
+CATEGORIES = {
+    "IMAGE_ROOT": "#c6e46a",
+    "IMAGE_STRUCT": {"el": "#65AC6E", "attr": "#84c192"},
+    "SETTINGS": {"el": "#B6DC3F", "attr": "#d6eb92"},
+    "SPECIMEN": {"el": "#DCCC36", "attr": "#e5d968"},
+    "IMAGE_OTHER": "#D3EA8B",
+    "EXPERIMENTAL": {"el": "#D37C38", "attr": "#e1a171"},
+    "SAMPLE": {"el": "#FBAE4D", "attr": "#fbc681"},
+    "INSTRUMENT_ROOT": "#84a12f",
+    "INSTRUMENT_ABS": "#91B033",
+    "INSTRUMENT_CHILD": "#c3d97f",
+    "INSTRUMENT_ATTR": "#D8E6AC",
+    "CALIBRATION_ROOT": "#E5828C",
+    "DEFAULT": "#D3EA8B"
 }
 
+# Upper level container elements in the LiMi Model
 MAIN_NODES = {
     "OME", "Project", "Dataset", "Folder", "Experiment", "Plate", 
     "Screen", "Experimenter", "ExperimenterGroup", "Instrument", 
     "Image", "StructuredAnnotations", "ROI"
 }
 
+# Regex for human-readable spacing (e.g., ExperimenterGroup -> Experimenter Group)
 NAME_SPACING_RE = re.compile(r'([a-z])([A-Z])')
 
-def normalize_name(name: str) -> str:
-    """Reformats names into space-separated strings, preserving ID/UUID."""
-    if name in ["ID", "UUID"]:
-        return name
-    name = re.sub(r'([a-zA-Z])(ID)$', r'\1 ID', name)
-    return NAME_SPACING_RE.sub(r'\1 \2', name)
-
 class OME_XSDParser:
-    """Parser for OME XSD that captures structural hierarchy and metadata (Description/Tier)."""
+    """
+    The parser for the OME XSD schema that transforms an XML structure 
+    into a JSON hierarchy. It captures the name, type, description, and tier
+    of each "node" and maps out the children.
+    """
     
     def __init__(self, xsd_path: Path):
+        """
+        Initializes the parser and builds internal lookup maps.
+        
+        Args:
+            xsd_path: Path object pointing to the source XML Schema file.
+        """
         self.tree = ET.parse(str(xsd_path))
         self.root = self._find_schema_root()
         self.maps = self._build_global_maps()
         self.substitutions = self._build_substitution_map()
 
     def _find_schema_root(self) -> ET.Element:
+        """
+        Locates the top-level <xsd:schema> element.
+        
+        Returns:
+            The root schema Element object.
+        """
         root = self.tree.getroot()
         return root if root.tag == QN("schema") else root.find(".//" + QN("schema"))
 
     def _build_global_maps(self) -> Dict[str, Dict[str, ET.Element]]:
+        """
+        Indexes all global declarations.
+        
+        Returns:
+            A dictionary containing maps for 'element', 'complexType', 'group', etc.
+        """
         keys = ["element", "complexType", "group", "attribute", "attributeGroup"]
         maps = {k: {} for k in keys}
         for child in self.root:
@@ -80,6 +109,16 @@ class OME_XSDParser:
         return maps
 
     def _build_substitution_map(self) -> Dict[str, List[ET.Element]]:
+        """
+        Identifies all elements belonging to a substitutionGroup.
+        
+        This allows the parser to resolve abstract heads into their concrete 
+        members.
+        
+        Returns:
+            A map where keys are head element names and values are
+            lists of member elements.
+        """
         sub_map = {}
         for el in self.root.findall(QN("element")):
             head = el.get("substitutionGroup")
@@ -89,25 +128,31 @@ class OME_XSDParser:
 
     def get_metadata(self, node: ET.Element) -> Dict[str, Optional[str]]:
         """
-        Extracts 'Description=' and 'Tier=' from xsd:documentation tags.
+        Extracts documentation and tier information from a node's annotation block.
+        
+        This method targets the node's immediate documentation
+        and uses regular expressions to isolate 'Description=' and 'Tier=' fields 
+        without capturing documentation from nested child nodes. This was an issue
+        with the original logic for parsing the inheritance after refactoring.
         
         Args:
-            node: The XML element to scan for annotations.
+            node: The XML element to scan.
+            
         Returns:
-            A dictionary containing 'description' and 'tier'.
+            A dictionary with keys 'description' and 'tier'.
         """
         meta = {"description": None, "tier": None}
         if node is None: return meta
         
-        # Documentation is usually inside an annotation tag [cite: 15, 104]
-        doc_elements = node.findall(f".//{QN('documentation')}")
+        # Find only direct children to avoid capturing nested field docs
+        doc_elements = node.findall(f"./{QN('annotation')}/{QN('documentation')}")
         all_text = []
         
         for doc in doc_elements:
             text = "".join(doc.itertext()).strip()
             if not text: continue
             
-            # Use regex to find Description= and Tier= patterns [cite: 42, 43, 105]
+            # Used to capture large multi <xsd:documentation> blocks
             desc_match = re.search(r'Description\s*=\s*(.*)', text, re.I | re.S)
             tier_match = re.search(r'Tier\s*=\s*(\d+)', text, re.I)
             
@@ -116,18 +161,34 @@ class OME_XSDParser:
             if tier_match:
                 meta["tier"] = tier_match.group(1).strip()
             
-            # If it's just general text without a key, save it as a fallback
             if not desc_match and not tier_match:
                 all_text.append(text)
         
-        # Fallback: if no explicit 'Description=' was found, use all documentation text 
+        # Fallback if no 'Description=' tag was found
         if not meta["description"] and all_text:
             meta["description"] = " ".join(all_text)
             
         return meta
 
     def resolve_element(self, el_node: ET.Element, seen_types: Set[str] = None) -> Dict:
-        """Resolves an element, capturing its metadata and flattening its hierarchy."""
+        """
+        Recursively resolves an XSD element into its JSON hierarchical representation.
+        
+        Processing steps:
+        1. Resolves references (@ref) by jumping to global definitions.
+        2. Captures node-specific metadata (Description/Tier).
+        3. Flattens inheritance by resolving 'complexType' extensions 
+           directly into the node.
+        4. Suppresses attribute collection for abstract nodes to prevent 
+           data duplication.
+        
+        Args:
+            el_node: The lxml element to process.
+            seen_types: Recursion tracker to prevent loops in complexType extensions.
+            
+        Returns:
+            A dictionary containing kind, name, metadata, and ordered children.
+        """
         seen_types = seen_types or set()
         
         ref_attr = el_node.get("ref")
@@ -138,52 +199,54 @@ class OME_XSDParser:
 
         name = el_node.get("name", "Unknown")
         is_abstract = el_node.get("abstract") == "true"
-        
-        # Capture Description and Tier for this node [cite: 43, 117]
         meta = self.get_metadata(el_node)
         
         node = {
-            "kind": "element",
-            "name": name,
-            "description": meta["description"],
-            "tier": meta["tier"],
-            "children": []
+            "kind": "element", "name": name, "description": meta["description"],
+            "tier": meta["tier"], "is_abstract": is_abstract, "children": []
         }
 
         if not is_abstract:
             attrs, elements = [], []
             type_name = el_node.get("type")
-            
-            # Named complexType resolution
             if type_name:
                 type_key = type_name.split(":")[-1]
                 if type_key in self.maps["complexType"] and type_key not in seen_types:
                     seen_types.add(type_key)
-                    # Also try to pull metadata from the complexType definition itself if the element lacked it
-                    if not node["description"] or not node["tier"]:
-                        ct_meta = self.get_metadata(self.maps["complexType"][type_key])
-                        if not node["description"]: node["description"] = ct_meta["description"]
-                        if not node["tier"]: node["tier"] = ct_meta["tier"]
+                    # Use complexType documentation if the element lacks it
+                    ct_meta = self.get_metadata(self.maps["complexType"][type_key])
+                    if not node["description"]: node["description"] = ct_meta["description"]
+                    if not node["tier"]: node["tier"] = ct_meta["tier"]
                         
                     self._collect_ordered_content(self.maps["complexType"][type_key], attrs, elements, seen_types)
                     seen_types.remove(type_key)
             
-            # Anonymous complexType resolution
             anon_ct = el_node.find(QN("complexType"))
             if anon_ct is not None:
                 self._collect_ordered_content(anon_ct, attrs, elements, seen_types)
             
             node["children"] = attrs + elements
 
-        # Substitution Members
+        # Attach concrete members of abstract heads
         if name in self.substitutions:
             for sub_el in self.substitutions[name]:
                 node["children"].append(self.resolve_element(sub_el, seen_types))
-
         return node
 
     def _collect_ordered_content(self, parent_node: ET.Element, attrs: List, elements: List, seen_types: Set[str]):
-        """Helper to walk the XSD and bucket attributes and elements separately."""
+        """
+        Reads structural tags to categorize children into 
+        attributes vs. elements.
+        
+        This approach ensures that attributes are always displayed first 
+        in the final JSON list, followed by sub-elements.
+        
+        Args:
+            parent_node: The XML element containing structural tags.
+            attrs: List to accumulate attribute nodes.
+            elements: List to accumulate element nodes.
+            seen_types: Recursion tracker for extensions.
+        """
         for child in parent_node:
             if not isinstance(child.tag, str): continue
             tag_local = ET.QName(child).localname
@@ -200,11 +263,8 @@ class OME_XSDParser:
                 name = child.get("name") or child.get("ref", "").split(":")[-1]
                 attr_meta = self.get_metadata(child)
                 attrs.append({
-                    "kind": "attribute", 
-                    "name": name, 
-                    "description": attr_meta["description"],
-                    "tier": attr_meta["tier"],
-                    "children": []
+                    "kind": "attribute", "name": name, "description": attr_meta["description"],
+                    "tier": attr_meta["tier"], "children": []
                 })
 
             elif tag_local == "element":
@@ -214,83 +274,120 @@ class OME_XSDParser:
                 self._collect_ordered_content(child, attrs, elements, seen_types)
 
 
-# --- Post-Parsing Styling & Normalization ---
+""" -------------------- Post-Parsing Styling Functions ----------------------- """
 
-def lighten(hex_color: str, amt: float = 0.25) -> str:
-    h = hex_color.lstrip('#')
-    rgb = [int(h[i:i+2], 16) for i in (0, 2, 4)]
-    res = [int(c + (255 - c) * amt) for c in rgb]
-    return "#{:02X}{:02X}{:02X}".format(*[min(255, val) for val in res])
+def normalize_name(name: str) -> str:
+    """
+    Transforms PascalCase/camelCase names into space-separated strings
+    with exceptions for acronyms like 'ID' and 'UUID'
+    
+    Args:
+        name: The raw string from the XSD attribute or element name.
+        
+    Returns:
+        A spaced string.
+    """
+    if name in ["ID", "UUID"]:
+        return name
+    name = re.sub(r'([a-zA-Z])(ID)$', r'\1 ID', name)
+    return NAME_SPACING_RE.sub(r'\1 \2', name)
 
-def finalize_tree(node: Dict, current_color: str):
-    """Recursively finalizes names and styling across the hierarchy."""
-    node["name"] = normalize_name(node["name"])
-    node["color"] = current_color
+def get_node_color(node: Dict, context: str) -> str:
+    """
+    Applies the specific color palette based on the branch context.
+    This is where some development and fixing will need to be done.
+    
+    Args:
+        node: The node being styled.
+        context: The top-level branch name defining the current palette.
+        
+    Returns:
+        A hex color string corresponding to the node's functional category.
+    """
+    name, kind = node["name"], node["kind"]
+    is_abstract = node.get("is_abstract", False)
+    
+    if context == "Instrument":
+        if name == "Instrument": return CATEGORIES["INSTRUMENT_ROOT"]
+        if kind == "attribute": return CATEGORIES["INSTRUMENT_ATTR"] 
+        if is_abstract: return CATEGORIES["INSTRUMENT_ABS"]          
+        return CATEGORIES["INSTRUMENT_CHILD"]                        
+
+    if context == "Image":
+        if any(x in name for x in ["Pixels", "Plane", "Channel"]):
+            return CATEGORIES["IMAGE_STRUCT"]["attr" if kind == "attribute" else "el"]
+        if "Settings" in name:
+            return CATEGORIES["SETTINGS"]["attr" if kind == "attribute" else "el"]
+        if any(x in name for x in ["Fluorophore", "Medium", "Immersion", "Label"]):
+            return CATEGORIES["SPECIMEN"]["attr" if kind == "attribute" else "el"]
+        return CATEGORIES["IMAGE_OTHER"]
+
+    if context == "Experiment": return CATEGORIES["EXPERIMENTAL"]["attr" if kind == "attribute" else "el"]
+    if context == "Sample": return CATEGORIES["SAMPLE"]["attr" if kind == "attribute" else "el"]
+    
+    return CATEGORIES["DEFAULT"]
+
+def finalize_tree(node: Dict, context: str):
+    """
+    Recursively applies name spacing and consistent categorical coloring.
+    
+    Args:
+        node: The node to finalize.
+        context: The naming context of the current branch.
+    """
+    raw_name = node["name"]
+    node["color"] = get_node_color(node, context)
+    node["name"] = normalize_name(raw_name)
+    
+    node.pop("is_abstract", None)
     
     for child in node.get("children", []):
-        if child.get("kind") == "attribute":
-            finalize_tree(child, current_color)
-        else:
-            finalize_tree(child, lighten(current_color, 0.15))
+        finalize_tree(child, context)
+
+
+""" ------------------------- Running the parser ------------------------- """
 
 def run_parser(input_xsd: str, output_json: str):
-    """Execution logic for parsing and saving."""
-    input_path = Path(input_xsd)
-    output_path = Path(output_json)
-
-    if not input_path.exists():
-        print(f"Error: Input file {input_path} not found.")
-        return
-
-    print(f"Reading from: {input_path.resolve()}")
-    parser = OME_XSDParser(input_path)
+    """
+    Runs the full parsing and styling workflow.
     
-   # Parse OME as the Root
+    Args:
+        input_xsd: Path to the XSD file.
+        output_json: Target path for the JSON export.
+    """
+    input_path = Path(input_xsd)
+    if not input_path.exists(): return
+
+    parser = OME_XSDParser(input_path)
+   
     ome_node = parser.resolve_element(parser.maps["element"]["OME"])
     
-    # Check for duplicates and ensure the main nodes are present
+    # Integrate and deduplicate main model containers
+    # This merges the old OME model with the updaed LiMi nodes
     existing_children = {c["name"] for c in ome_node["children"]}
     for name in MAIN_NODES:
         if name != "OME" and name not in existing_children:
-            node = parser.resolve_element(parser.maps["element"][name])
-            ome_node["children"].append(node)
+            ome_node["children"].append(parser.resolve_element(parser.maps["element"][name]))
 
-    # Apply final styles
-    ome_node["color"] = STYLE_MAP["OME"]
+    # Apply contextual coloring starting from OME root
+    ome_node["color"] = CATEGORIES["IMAGE_ROOT"]
     for child in ome_node.get("children", []):
-        # Look up color based on original element name before spacing is applied
-        branch_color = STYLE_MAP.get(child["name"], STYLE_MAP["DEFAULT"])
-        # Applies spacing to node names for human readability
-        finalize_tree(child, branch_color)
-
-    # Rename OME Root node to LiMi Model
+        finalize_tree(child, child["name"])
+    
+    # Rename to custom root model name
     ome_node["name"] = "LiMi Model"
 
-    # Export
-    with open(output_path, "w", encoding="utf-8") as f:
+    with open(output_json, "w", encoding="utf-8") as f:
         json.dump(ome_node, f, indent=2)
-    print(f"Successfully saved to: {output_path.resolve()}")
-
+    print(f"Workflow Complete: Spaced Names, Full Metadata, and Categorical Coloring applied. Saved to {output_json}")
 
 def main():
-
-    """Handles argument passing."""
-    # Check for CLI arguments: script.py <input> <output>
+    """Entry point handling CLI arguments or defaults."""
     if len(sys.argv) >= 3:
         run_parser(sys.argv[1], sys.argv[2])
-    
-    elif len(sys.argv) == 2:
-        # Default output name if only input is provided
-        run_parser(sys.argv[1], "LiMi_Model.json")
-    
     else:
-        # Look for defaults in current directory if no arguments are given
-        print("Usage: python script.py <input_path> <output_path>")
-        print("Checking current directory for 'LiMi_XMLSchema.xsd'...")
-        default_in = "schemas/LiMi_XMLSchema.xsd"
-        default_out = "data/LiMi_Model.json"
-        run_parser(default_in, default_out)
+        # Default portability if no args provided
+        run_parser("XMLSchema1.xsd", "test_ome_refactor-coloring.json")
 
 if __name__ == "__main__":
-
     main()
