@@ -387,7 +387,7 @@ def main():
         run_parser(sys.argv[1], sys.argv[2])
     else:
         # Default portability if no args provided
-        run_parser("XMLSchema1.xsd", "test_ome_refactor-coloring.json")
+        run_parser("LiMi_XMLSchema.xsd", "LiMi_Model.json")
 
 if __name__ == "__main__":
     main()
