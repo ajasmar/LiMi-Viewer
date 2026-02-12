@@ -37,21 +37,33 @@ QN = lambda local: f"{{{XSD_NS}}}{local}" # Qualified Name (QName) helper
 # Defined hex color mapping for categorical visualization
 # This is where I was having issues
 CATEGORIES = {
-    "IMAGE_ROOT": "#c6e46a",
-    "IMAGE_STRUCT": {"el": "#65AC6E", "attr": "#84c192"},
-    "SETTINGS": {"el": "#B6DC3F", "attr": "#d6eb92"},
-    "SPECIMEN": {"el": "#DCCC36", "attr": "#e5d968"},
-    "IMAGE_OTHER": "#D3EA8B",
-    "EXPERIMENTAL": {"el": "#D37C38", "attr": "#e1a171"},
-    "SAMPLE": {"el": "#FBAE4D", "attr": "#fbc681"},
-    "INSTRUMENT_ROOT": "#84a12f",
-    "INSTRUMENT_ABS": "#91B033",
-    "INSTRUMENT_CHILD": "#c3d97f",
-    "INSTRUMENT_ATTR": "#D8E6AC",
-    "CALIBRATION_ROOT": "#E5828C",
-    "DEFAULT": "#D3EA8B"
-}
+    
+    # --- Global Root ---
+    "LIMI_ROOT": "#9ae59a",         # Top Level LiMi Model Node
+    
+    # --- Image Hierarchy Colors ---
+    "IMAGE_ROOT": "#c6e46a",      # Root Image Node
+    "IMAGE_SETTINGS": "#B6DC3F",  # Settings and children
+    "IMAGE_ILLUM_POWER": "#d6eb92", # Illumination Power and children
+    "IMAGE_STRUCT": "#9cc9a2",    # Plane, Pixels, Channel and children
+    "IMAGE_FLUOR": "#DCCC36",     # Fluorophore and children
+    "IMAGE_DEFAULT": "#e0f0ac",   # All other Image children
 
+    # --- Experiment Hierarchy Colors ---
+    "EXPERIMENT_ROOT": "#e3ac82", #"#D37C38",
+    "LABELLING_METHOD": "#f1d6c1", #"#e5b188",
+    "SAMPLE": "#FBAE4D",
+    "BIO_ORIGIN": "#fdd19b",
+
+    # --- Instrument Hierarchy Colors ---
+    "INSTRUMENT_ROOT": "#b5d161", #"#84a12f", # Instrument root and general children
+    "INSTRUMENT_FILTER": "#c6dd88", #"#91B033", # FilterGroup and children
+    "INSTRUMENT_EXCITATION": "#d9e8b0", #"#C3D97F", # ExcitationFilter and children
+    "INSTRUMENT_COATING": "#e4edc4", #"#D8E6AC", # CoatingMethod and children
+    
+    # --- Others ---
+    "DEFAULT": "#e4edf9"
+}
 # Upper level container elements in the LiMi Model
 MAIN_NODES = {
     "OME", "Project", "Dataset", "Folder", "Experiment", "Plate", 
@@ -295,7 +307,6 @@ def normalize_name(name: str) -> str:
 def get_node_color(node: Dict, context: str) -> str:
     """
     Applies the specific color palette based on the branch context.
-    This is where some development and fixing will need to be done.
     
     Args:
         node: The node being styled.
@@ -304,26 +315,32 @@ def get_node_color(node: Dict, context: str) -> str:
     Returns:
         A hex color string corresponding to the node's functional category.
     """
-    name, kind = node["name"], node["kind"]
-    is_abstract = node.get("is_abstract", False)
     
-    if context == "Instrument":
-        if name == "Instrument": return CATEGORIES["INSTRUMENT_ROOT"]
-        if kind == "attribute": return CATEGORIES["INSTRUMENT_ATTR"] 
-        if is_abstract: return CATEGORIES["INSTRUMENT_ABS"]          
-        return CATEGORIES["INSTRUMENT_CHILD"]                        
+    # --- Experiment Hierarchy ---
+    if context == "Experiment_Context": return CATEGORIES["EXPERIMENT_ROOT"]
+    if context == "Labelling_Context": return CATEGORIES["LABELLING_METHOD"]
+    if context == "Sample_Context": return CATEGORIES["SAMPLE"]
+    if context == "BioOrigin_Context": return CATEGORIES["BIO_ORIGIN"]
 
-    if context == "Image":
-        if any(x in name for x in ["Pixels", "Plane", "Channel"]):
-            return CATEGORIES["IMAGE_STRUCT"]["attr" if kind == "attribute" else "el"]
-        if "Settings" in name:
-            return CATEGORIES["SETTINGS"]["attr" if kind == "attribute" else "el"]
-        if any(x in name for x in ["Fluorophore", "Medium", "Immersion", "Label"]):
-            return CATEGORIES["SPECIMEN"]["attr" if kind == "attribute" else "el"]
-        return CATEGORIES["IMAGE_OTHER"]
+    # --- Image Hierarchy ---
+    if context == "Image_Settings_Context": return CATEGORIES["IMAGE_SETTINGS"]
+    if context == "Image_Illum_Context": return CATEGORIES["IMAGE_ILLUM_POWER"]
+    if context == "Image_Struct_Context": return CATEGORIES["IMAGE_STRUCT"]
+    if context == "Image_Fluor_Context": return CATEGORIES["IMAGE_FLUOR"]
+    
+    # General Image Context (fallback)
+    if context == "Image_Context":
+        if node["name"] == "Image": return CATEGORIES["IMAGE_ROOT"] 
+        return CATEGORIES["IMAGE_DEFAULT"]
 
-    if context == "Experiment": return CATEGORIES["EXPERIMENTAL"]["attr" if kind == "attribute" else "el"]
-    if context == "Sample": return CATEGORIES["SAMPLE"]["attr" if kind == "attribute" else "el"]
+    # --- Instrument Hierarchy ---
+    if context == "Instrument_Filter_Context": return CATEGORIES["INSTRUMENT_FILTER"]
+    if context == "Instrument_Excitation_Context": return CATEGORIES["INSTRUMENT_EXCITATION"]
+    if context == "Instrument_Coating_Context": return CATEGORIES["INSTRUMENT_COATING"]
+    
+    # General Instrument Context (fallback)
+    if context == "Instrument_Context":
+        return CATEGORIES["INSTRUMENT_ROOT"]
     
     return CATEGORIES["DEFAULT"]
 
@@ -331,11 +348,52 @@ def finalize_tree(node: Dict, context: str):
     """
     Recursively applies name spacing and consistent categorical coloring.
     
+    The 'context' variable is updated dynamically when descending into 
+    specific sub-branches (Experiment, Image, Instrument, etc.) to ensure 
+    children inherit the correct color palette.
+    
     Args:
         node: The node to finalize.
         context: The naming context of the current branch.
     """
     raw_name = node["name"]
+    
+    # --- Dynamic Context Switching ---
+    
+    # 1. Experiment Hierarchy logic
+    if raw_name == "Experiment":
+        context = "Experiment_Context"
+    elif "LabellingMethod" in raw_name:
+        context = "Labelling_Context"
+    elif raw_name == "Sample":
+        context = "Sample_Context"
+    elif "BiologicalOrigin" in raw_name:
+        context = "BioOrigin_Context"
+
+    # 2. Image Hierarchy logic
+    elif raw_name == "Image":
+        context = "Image_Context"
+    elif context.startswith("Image") or context == "Image_Context":
+        if "Settings" in raw_name:
+            context = "Image_Settings_Context"
+        elif "IlluminationPower" in raw_name:
+            context = "Image_Illum_Context"
+        elif any(x in raw_name for x in ["Plane", "Pixels", "Channel"]):
+            context = "Image_Struct_Context"
+        elif "Fluorophore" in raw_name:
+            context = "Image_Fluor_Context"
+
+    # 3. Instrument Hierarchy logic
+    elif raw_name == "Instrument":
+        context = "Instrument_Context"
+    elif context.startswith("Instrument") or context == "Instrument_Context":
+        if "FilterGroup" in raw_name:
+            context = "Instrument_Filter_Context"
+        elif "ExcitationFilter" in raw_name:
+            context = "Instrument_Excitation_Context"
+        elif "CoatingMethod" in raw_name:
+            context = "Instrument_Coating_Context"
+
     node["color"] = get_node_color(node, context)
     node["name"] = normalize_name(raw_name)
     
@@ -369,18 +427,21 @@ def run_parser(input_xsd: str, output_json: str):
         if name != "OME" and name not in existing_children:
             ome_node["children"].append(parser.resolve_element(parser.maps["element"][name]))
 
-    # Apply contextual coloring starting from OME root
-    ome_node["color"] = CATEGORIES["IMAGE_ROOT"]
+    # Rename to custom root model name immediately
+    ome_node["name"] = "LiMi Model"
+    
+    # Apply Root Color specifically
+    ome_node["color"] = CATEGORIES["LIMI_ROOT"]
+    
+    # Process children, passing their own names as the starting context
     for child in ome_node.get("children", []):
         finalize_tree(child, child["name"])
-    
-    # Rename to custom root model name
-    ome_node["name"] = "LiMi Model"
 
     with open(output_json, "w", encoding="utf-8") as f:
         json.dump(ome_node, f, indent=2)
     print(f"Workflow Complete: Spaced Names, Full Metadata, and Categorical Coloring applied. Saved to {output_json}")
-
+    
+    
 def main():
     """Entry point handling CLI arguments or defaults."""
     if len(sys.argv) >= 3:
