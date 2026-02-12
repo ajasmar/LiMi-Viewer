@@ -280,7 +280,7 @@ function update(source) {
     .attr("class", "label")
     .attr("text-anchor", "start")
     .attr("dominant-baseline", "middle")
-    .attr("fill", "#fff")
+    .attr("fill", "#000")
     .text(d => nodeLabel(d));
 
   // Info button
@@ -288,7 +288,7 @@ function update(source) {
     .attr('class', 'info-btn')
     .attr('text-anchor', 'start')
     .attr('font-weight', 'bold')
-    .attr('fill', '#fff')
+    .attr('fill', '#000')
     .style('cursor', 'pointer')
     .attr('font-size', '20px')
     .attr('dy', '0.25em')
@@ -307,8 +307,8 @@ function update(source) {
         <div style="
           flex: 0 0 auto;
           font-weight: bold; 
-          margin-bottom: 8px; 
-          border-bottom: 1px solid #ddd; 
+          margin-bottom: 12px; 
+          border-bottom: 3px solid #000; 
           padding-bottom: 4px; 
           background: #f9f9f9;
         ">
@@ -392,6 +392,5 @@ function redraw() {
     centerNode(root);
   }).catch(console.error);
 }
-
 
 redraw();
