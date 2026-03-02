@@ -1,5 +1,5 @@
 // Model JSON
-const DATA_URL = `../data/LiMi_Model.json`;
+const DATA_URL = `./data/LiMi_Model.json`;
 
 // Fetch root object and cache-bust via timestamp
 function loadData() {
@@ -660,3 +660,4 @@ d3.select("#search-input").on("input", function() {
     centerNode(root);
   }
 });
+
