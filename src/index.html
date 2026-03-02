@@ -19,7 +19,12 @@
 </head>
 <body>
   <h1>LiMi Metadata Model Viewer</h1>
-
+	<div id="search-container" style="position: absolute; top: 20px; left: 20px; z-index: 10; font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+		<input type="text" id="search-input" placeholder="Search nodes...">
+		<button id="search-btn">Search</button>
+		<button id="clear-btn">Clear</button>
+		<span id="search-status"></span>
+	</div>
   <svg id="chart" width=90% height="800"></svg>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="LiMi_Viewer.js"></script>
