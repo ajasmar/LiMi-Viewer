@@ -6,6 +6,11 @@ The tool consists of a D3.js-based collapsible node-linked graph built using a h
 The current version was used to parse the latest XSD available from the NBOMicroscopyMetadataSpecs github 
 (Model/in progress/v02-10/NBO_MicroscopyMetadataSpecifications_ALL.xsd)
 
+A live view of the current version can be found at this [GitHub page](https://ajasmar.github.io/LiMi-Viewer/).
+
+<img width="1835" height="865" alt="image" src="https://github.com/user-attachments/assets/260f0807-22c5-446c-9ddd-5235b5817fff" />
+
+
 ---
 # Structure
 ```text
