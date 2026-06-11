@@ -133,7 +133,7 @@ infoFO.append("xhtml:div")
   .style("display", "flex")       // Enable flexbox
   .style("flex-direction", "column")
   .style("overflow", "hidden")    // Disable outer scrolling
-  .html('<div style="color:#666; padding: 4px;">Click a node’s “| i” to see details.</div>');
+  .html('<div style="color:#666; padding: 4px;">Click a node\'s "| i" to see details.</div>');
 
 // Resize handler to adjust Info Panel width/position dynamically 
 function handleResize() {
@@ -273,10 +273,54 @@ function update(source) {
     .attr("class", "node")
     .attr("transform", `translate(${source.y0},${source.x0})`)
     .on("click", (e, d) => {
-      if (d.children) { d._children = d.children; d.children = null; }
-      else if (d._children) { d.children = d._children; d._children = null; }
-      update(d);
-      centerNode(d);
+      if (searchResults.length > 0) {
+        // Capture the key of the clicked node before rebuilding the hierarchy
+        const targetKey = uniqueKey(d);
+
+        // Rebuild the full hierarchy from scratch so all children
+        // hidden by filterTree() are restored
+        root = d3.hierarchy(root.data, childAccessor);
+        root.x0 = 0;
+        root.y0 = 0;
+
+        // Find the matching node in the fresh tree (all nodes are in
+        // .children at this point, so root.each() can reach them all)
+        let targetNode = null;
+        root.each(node => {
+          if (uniqueKey(node) === targetKey) targetNode = node;
+        });
+
+        // Collapse everything except root's own children list
+        if (root.children) root.children.forEach(collapseAll);
+
+        if (targetNode) {
+          // Re-open every ancestor from root down to the target
+          expandPathTo(targetNode);
+          // Expand the target's own children
+          if (targetNode._children) {
+            targetNode.children = targetNode._children;
+            targetNode._children = null;
+          }
+        }
+
+        // Clear all search state
+        lastSearchTerm = "";
+        searchResults = [];
+        currentSearchIndex = 0;
+        d3.select("#search-input").property("value", "");
+        d3.select("#search-status").text("");
+        clearHighlights();
+
+        update(targetNode || root);
+        centerNode(targetNode || root);
+
+      } else {
+        // Normal toggle behaviour
+        if (d.children) { d._children = d.children; d.children = null; }
+        else if (d._children) { d.children = d._children; d._children = null; }
+        update(d);
+        centerNode(d);
+      }
     });
 
   enter.append("rect")
@@ -302,11 +346,11 @@ function update(source) {
     .text('| i')
     .on("click", (e, d) => {
       e.stopPropagation();
-	  
-	  // Check for Tier value and append to description title
+
+      // Check for Tier value and append to description title
       const hasTier = d.data?.tier !== undefined && d.data?.tier !== null;
       const tierValue = hasTier ? ` (Tier ${d.data.tier})` : "";
-      
+
       const titleText = `Details for ${nodeLabel(d)}${tierValue}:`;
       const desc = getDescription(d);
 
@@ -334,10 +378,10 @@ function update(source) {
 
   const nodeUpdate = enter.merge(nodeSel);
   nodeUpdate.select("rect")
-  	.attr("fill", nodeFill)
-  	.attr("stroke", nodeStroke)
-  	.attr("stroke-width", d => (!d.children && !d._children) ? 2 : 1);
-  	
+    .attr("fill", nodeFill)
+    .attr("stroke", nodeStroke)
+    .attr("stroke-width", d => (!d.children && !d._children) ? 4 : 1);
+
   nodeUpdate.each(function(d) {
     const gEl = d3.select(this);
     measureAndCache(d, gEl);
@@ -383,7 +427,7 @@ function update(source) {
   nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
 }
 
-// Function for cetering on the selected node
+// Function for centering on the selected node
 function centerNode(d) {
   const t = d3.zoomTransform(svg.node());
   const k = t.k;
@@ -437,7 +481,7 @@ function searchNode(term) {
   function filterTree(node) {
     const name = nodeLabel(node).toLowerCase();
     const isMatch = name.includes(searchTerm);
-    
+
     if (isMatch) {
       searchResults.push(node);
     }
@@ -490,7 +534,7 @@ function searchNode(term) {
     // Highlight matches and focus on the first one
     highlightAllMatches();
     setTimeout(() => focusOnResult(0), 300);
-    
+
   } else {
     // If no matches, clear highlights and collapse everything
     clearHighlights();
@@ -512,38 +556,53 @@ function collapseAll(d) {
   }
 }
 
+// Expand only the single branch leading to the target node, hiding all siblings
+function expandPathTo(node) {
+  const ancestors = node.ancestors().reverse(); // [root, ..., parent, node]
+  for (let i = 0; i < ancestors.length - 1; i++) {
+    const a = ancestors[i];
+    const nextOnPath = ancestors[i + 1];
+    // Combine currently visible and hidden children
+    const all = [...(a.children || []), ...(a._children || [])];
+    // Show only the child that leads toward the target
+    a.children = [nextOnPath];
+    // Hide all siblings
+    a._children = all.length > 1 ? all.filter(c => c !== nextOnPath) : null;
+  }
+}
+
 // Center view and update text counter
 function focusOnResult(index) {
   if (searchResults.length === 0) return;
   const targetNode = searchResults[index];
   centerNode(targetNode);
-  
+
   d3.select("#search-status").text(`${index + 1} of ${searchResults.length}`);
 
   const nodeSelection = container.selectAll("g.node")
     .filter(d => uniqueKey(d) === uniqueKey(targetNode));
-  
+
   nodeSelection.select("rect")
     .transition().duration(200)
-    .attr("stroke", "#ff8800") 
+    .attr("stroke", "#ff8800")
     .attr("stroke-width", 5)
     .transition().duration(800)
-    .attr("stroke", "red")     
+    .attr("stroke", "red")
     .attr("stroke-width", 3);
 }
 
 // Outline all matching nodes in red
 function highlightAllMatches() {
-  clearHighlights(); 
-  
+  clearHighlights();
+
   const matchKeys = new Set(searchResults.map(uniqueKey));
-  
+
   container.selectAll("g.node")
     .filter(d => matchKeys.has(uniqueKey(d)))
     .select("rect")
     .attr("stroke", "red")
     .attr("stroke-width", 3)
-    .classed("search-match", true); 
+    .classed("search-match", true);
 }
 
 // Clear highlights
@@ -568,10 +627,8 @@ function resetSearch() {
 
   // Recursive collapse to return to default state
   function restoreAndCollapse(d) {
-    // If it was expanded by search, move children back to _children
     if (d.children) {
       if (!d._children) d._children = [];
-      // Merge if necessary
       d._children = d.children;
       d.children = null;
     }
@@ -586,8 +643,8 @@ function resetSearch() {
   } else if (root._children) {
     root._children.forEach(restoreAndCollapse);
   }
-  
-  // Open first level by default (this can be removed if we want first level collapsed)
+
+  // Open first level by default
   if (root._children) {
     root.children = root._children;
     root._children = null;
@@ -604,21 +661,20 @@ function resetTree() {
   lastSearchTerm = "";
   searchResults = [];
   currentSearchIndex = 0;
-  
+
   // Clear UI
   d3.select("#search-input").property("value", "");
   d3.select("#search-status").text("");
   clearHighlights();
 
   // Re-build the hierarchy from the original data
-  // This ensures all nodes (including top-level ones) are restored
   if (root && root.data) {
-    const originalData = root.data; 
+    const originalData = root.data;
     root = d3.hierarchy(originalData, childAccessor);
-    root.x0 = 0; 
+    root.x0 = 0;
     root.y0 = 0;
 
-    // Go to default state: Collapse everything except the first level
+    // Go to default state: collapse everything except the first level
     if (root.children) {
       root.children.forEach(collapseAll);
     }
@@ -645,13 +701,6 @@ d3.select("#search-input").on("keypress", (event) => {
 
 d3.select("#clear-btn").on("click", resetTree);
 
-
-d3.select("#search-input").on("input", function() {
-  if (!this.value.trim()) {
-    resetTree();
-  }
-});
-
 // Clear search when the input is emptied and reset the tree
 d3.select("#search-input").on("input", function() {
   if (!this.value.trim()) {
@@ -659,16 +708,15 @@ d3.select("#search-input").on("input", function() {
     d3.select("#search-status").text("");
     lastSearchTerm = "";
     searchResults = [];
-    
+
     // Reset the tree to its default state (root visible, everything else collapsed)
     if (root.children) root.children.forEach(collapseAll);
     if (root._children) {
-        root.children = root._children;
-        root._children = null;
-        root.children.forEach(collapseAll);
+      root.children = root._children;
+      root._children = null;
+      root.children.forEach(collapseAll);
     }
     update(root);
     centerNode(root);
   }
 });
-
