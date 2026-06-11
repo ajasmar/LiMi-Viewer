@@ -29,10 +29,18 @@ function nodeLabel(d) {
 
 // Use color carried in the JSON data or fallback to default
 function nodeFill(d) {
-  if (d.data?.color) return d.data.color; // use color from JSON if present
-  if (d.data?.kind === "attribute") return "#6fa8dc"; // attribute color
-  if (d.depth === 0) return "#888"; // root fallback
-  return "#4b6cb7"; // element/base fallback
+  const isLeaf = !d.children && !d._children;
+  if (isLeaf) return "#fafafa";
+  if (d.data?.color) return d.data.color;
+  if (d.data?.kind === "attribute") return "#6fa8dc";
+  if (d.depth === 0) return "#888";
+  return "#4b6cb7";
+}
+
+function nodeStroke(d) {
+  const isLeaf = !d.children && !d._children;
+  if (isLeaf && d.parent) return nodeFill(d.parent);
+  return "#333";
 }
 
 // Info text fallback if a node has no parsed XSD description.
@@ -325,8 +333,11 @@ function update(source) {
     });
 
   const nodeUpdate = enter.merge(nodeSel);
-  nodeUpdate.select("rect").attr("fill", nodeFill);
-
+  nodeUpdate.select("rect")
+  	.attr("fill", nodeFill)
+  	.attr("stroke", nodeStroke)
+  	.attr("stroke-width", d => (!d.children && !d._children) ? 2 : 1);
+  	
   nodeUpdate.each(function(d) {
     const gEl = d3.select(this);
     measureAndCache(d, gEl);
