@@ -35,35 +35,29 @@ XSD_NS = "http://www.w3.org/2001/XMLSchema"
 QN = lambda local: f"{{{XSD_NS}}}{local}" # Qualified Name (QName) helper
 
 # Defined hex color mapping for categorical visualization
-# This is where I was having issues
+# After some revisions, the current version colors the elements in one color
+# and the attributes which are the "terminal" nodes in a lighter color
 CATEGORIES = {
-    
-    # --- Global Root ---
+    # Global Root
     "LIMI_ROOT": "#9ae59a",         # Top Level LiMi Model Node
     
-    # --- Image Hierarchy Colors ---
-    "IMAGE_ROOT": "#c6e46a",      # Root Image Node
-    "IMAGE_SETTINGS": "#B6DC3F",  # Settings and children
-    "IMAGE_ILLUM_POWER": "#d6eb92", # Illumination Power and children
-    "IMAGE_STRUCT": "#9cc9a2",    # Plane, Pixels, Channel and children
-    "IMAGE_FLUOR": "#DCCC36",     # Fluorophore and children
-    "IMAGE_DEFAULT": "#e0f0ac",   # All other Image children
+    # Element / Attribute coloring
+    "IMAGE_ELEM": "#c6e46a",
+    "IMAGE_ATTR": "#e0f0ac",
 
-    # --- Experiment Hierarchy Colors ---
-    "EXPERIMENT_ROOT": "#e3ac82", #"#D37C38",
-    "LABELLING_METHOD": "#f1d6c1", #"#e5b188",
-    "SAMPLE": "#FBAE4D",
-    "BIO_ORIGIN": "#fdd19b",
+    "EXPERIMENT_ELEM": "#e3ac82",
+    "EXPERIMENT_ATTR": "#f1d6c1",
 
-    # --- Instrument Hierarchy Colors ---
-    "INSTRUMENT_ROOT": "#b5d161", #"#84a12f", # Instrument root and general children
-    "INSTRUMENT_FILTER": "#c6dd88", #"#91B033", # FilterGroup and children
-    "INSTRUMENT_EXCITATION": "#d9e8b0", #"#C3D97F", # ExcitationFilter and children
-    "INSTRUMENT_COATING": "#e4edc4", #"#D8E6AC", # CoatingMethod and children
+    "SAMPLE_ELEM": "#FBAE4D",
+    "SAMPLE_ATTR": "#fcd09a",
+
+    "INSTRUMENT_ELEM": "#b5d161",
+    "INSTRUMENT_ATTR": "#d9e8b0",
     
-    # --- Others ---
-    "DEFAULT": "#e4edf9"
+    "DEFAULT_ELEM": "#CDE0F7",
+    "DEFAULT_ATTR": "#E4EDF9"
 }
+
 # Upper level container elements in the LiMi Model
 MAIN_NODES = {
     "OME", "Project", "Dataset", "Folder", "Experiment", "Plate", 
@@ -289,112 +283,46 @@ class OME_XSDParser:
 """ -------------------- Post-Parsing Styling Functions ----------------------- """
 
 def normalize_name(name: str) -> str:
-    """
-    Transforms PascalCase/camelCase names into space-separated strings
-    with exceptions for acronyms like 'ID' and 'UUID'
-    
-    Args:
-        name: The raw string from the XSD attribute or element name.
-        
-    Returns:
-        A spaced string.
-    """
     if name in ["ID", "UUID"]:
         return name
     name = re.sub(r'([a-zA-Z])(ID)$', r'\1 ID', name)
     return NAME_SPACING_RE.sub(r'\1 \2', name)
 
-def get_node_color(node: Dict, context: str) -> str:
+def get_node_color(context: str, is_terminal: bool) -> str:
     """
-    Applies the specific color palette based on the branch context.
-    
-    Args:
-        node: The node being styled.
-        context: The top-level branch name defining the current palette.
-        
-    Returns:
-        A hex color string corresponding to the node's functional category.
+    Applies the specific color palette based on if the node branches or is terminal.
     """
-    
-    # --- Experiment Hierarchy ---
-    if context == "Experiment_Context": return CATEGORIES["EXPERIMENT_ROOT"]
-    if context == "Labelling_Context": return CATEGORIES["LABELLING_METHOD"]
-    if context == "Sample_Context": return CATEGORIES["SAMPLE"]
-    if context == "BioOrigin_Context": return CATEGORIES["BIO_ORIGIN"]
-
-    # --- Image Hierarchy ---
-    if context == "Image_Settings_Context": return CATEGORIES["IMAGE_SETTINGS"]
-    if context == "Image_Illum_Context": return CATEGORIES["IMAGE_ILLUM_POWER"]
-    if context == "Image_Struct_Context": return CATEGORIES["IMAGE_STRUCT"]
-    if context == "Image_Fluor_Context": return CATEGORIES["IMAGE_FLUOR"]
-    
-    # General Image Context (fallback)
     if context == "Image_Context":
-        if node["name"] == "Image": return CATEGORIES["IMAGE_ROOT"] 
-        return CATEGORIES["IMAGE_DEFAULT"]
-
-    # --- Instrument Hierarchy ---
-    if context == "Instrument_Filter_Context": return CATEGORIES["INSTRUMENT_FILTER"]
-    if context == "Instrument_Excitation_Context": return CATEGORIES["INSTRUMENT_EXCITATION"]
-    if context == "Instrument_Coating_Context": return CATEGORIES["INSTRUMENT_COATING"]
-    
-    # General Instrument Context (fallback)
-    if context == "Instrument_Context":
-        return CATEGORIES["INSTRUMENT_ROOT"]
-    
-    return CATEGORIES["DEFAULT"]
+        return CATEGORIES["IMAGE_ATTR"] if is_terminal else CATEGORIES["IMAGE_ELEM"]
+    elif context == "Sample_Context":
+        return CATEGORIES["SAMPLE_ATTR"] if is_terminal else CATEGORIES["SAMPLE_ELEM"]
+    elif context == "Experiment_Context":
+        return CATEGORIES["EXPERIMENT_ATTR"] if is_terminal else CATEGORIES["EXPERIMENT_ELEM"]
+    elif context == "Instrument_Context":
+        return CATEGORIES["INSTRUMENT_ATTR"] if is_terminal else CATEGORIES["INSTRUMENT_ELEM"]
+    else:
+        # Applies to remaining unassigned elements (These are mainly the original OME nodes)
+        return CATEGORIES["DEFAULT_ATTR"] if is_terminal else CATEGORIES["DEFAULT_ELEM"]
 
 def finalize_tree(node: Dict, context: str):
     """
-    Recursively applies name spacing and consistent categorical coloring.
-    
-    The 'context' variable is updated dynamically when descending into 
-    specific sub-branches (Experiment, Image, Instrument, etc.) to ensure 
-    children inherit the correct color palette.
-    
-    Args:
-        node: The node to finalize.
-        context: The naming context of the current branch.
+    Categorizes the nodes and then calls the fucntion for color assignment
     """
     raw_name = node["name"]
     
-    # --- Dynamic Context Switching ---
-    
-    # 1. Experiment Hierarchy logic
-    if raw_name == "Experiment":
+    if raw_name == "Image":
+        context = "Image_Context"
+    elif raw_name == "Experiment":
         context = "Experiment_Context"
-    elif "LabellingMethod" in raw_name:
-        context = "Labelling_Context"
     elif raw_name == "Sample":
         context = "Sample_Context"
-    elif "BiologicalOrigin" in raw_name:
-        context = "BioOrigin_Context"
-
-    # 2. Image Hierarchy logic
-    elif raw_name == "Image":
-        context = "Image_Context"
-    elif context.startswith("Image") or context == "Image_Context":
-        if "Settings" in raw_name:
-            context = "Image_Settings_Context"
-        elif "IlluminationPower" in raw_name:
-            context = "Image_Illum_Context"
-        elif any(x in raw_name for x in ["Plane", "Pixels", "Channel"]):
-            context = "Image_Struct_Context"
-        elif "Fluorophore" in raw_name:
-            context = "Image_Fluor_Context"
-
-    # 3. Instrument Hierarchy logic
     elif raw_name == "Instrument":
         context = "Instrument_Context"
-    elif context.startswith("Instrument") or context == "Instrument_Context":
-        if "FilterGroup" in raw_name:
-            context = "Instrument_Filter_Context"
-        elif "ExcitationFilter" in raw_name:
-            context = "Instrument_Excitation_Context"
-        elif "CoatingMethod" in raw_name:
-            context = "Instrument_Coating_Context"
+    elif context not in ["Image_Context", "Experiment_Context", "Sample_Context", "Instrument_Context"]:
+        context = "Default_Context"
 
-    node["color"] = get_node_color(node, context)
+    is_terminal = len(node.get("children", [])) == 0
+    node["color"] = get_node_color(context, is_terminal)
     node["name"] = normalize_name(raw_name)
     
     node.pop("is_abstract", None)
