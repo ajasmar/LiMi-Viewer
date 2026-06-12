@@ -2,32 +2,135 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>LiMi Model Collapsible Flowchart</title>
+  <title>LiMi-Model Viewer</title>
   <style>
     body {
       text-align: center;
       margin: 0;
       padding: 0;
     }
-	svg {
+    svg {
       display: block;
       margin: 0 auto;
-	  border: 1px solid #ccc;
+      border: 1px solid #ccc;
+      margin-bottom: 50px;
     }
-
+    .justify {
+      text-align: justify;
+    }
   </style>
 </head>
 <body>
-  <h1>LiMi Metadata Model Viewer</h1>
-	<div id="search-container" style="position: absolute; top: 20px; left: 20px; z-index: 10; font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
-		<input type="text" id="search-input" placeholder="Search nodes...">
-		<button id="search-btn">Search</button>
-		<button id="clear-btn">Clear</button>
-		<span id="search-status"></span>
-	</div>
-  <svg id="chart" width=90% height="800"></svg>
+
+  <!-- TOP BAR -->
+  <div id="top-bar" style="
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    background: #f8f8f8;
+    border-bottom: 1px solid #ccc;
+    padding: 8px 16px;
+    box-sizing: border-box;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  ">
+
+    <!-- ROW 1: Title -->
+    <h1 style="margin: 0 0 8px 0; font-size: 2em; font-family: sans-serif; white-space: nowrap;">
+      LiMi-Model Viewer
+    </h1>
+
+    <!-- ROW 2: Instructions · Search · Legend -->
+    <div style="display: flex; align-items: flex-start; justify-content: space-between; width: 100%; gap: 10px;">
+
+      <!-- LEFT: Instructions -->
+      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; max-width: 600px;">
+        <details>
+          <summary style="cursor: pointer; font-weight: bold;">Instructions</summary>
+          <p style="text-align: left; margin: 8px 0 0 0; font-size: 0.9em;">
+            This viewer provides an <strong>interactive interface for exploring the LiMi-Model</strong> — the Light Microscopy Model developed and maintained by <a href="https://quarep.org">QUAREP-LiMi</a> to standardize microscopy metadata specifications.
+            <br><br>
+            To navigate: click the center of any node to expand or collapse its sub-elements and attributes. Click the "i" icon on any node to view a detailed description of that element.
+            Nodes shown with a <strong>light grey fill and colored border are attributes</strong>, describing the specific characteristics captured for each element.
+          </p>
+        </details>
+      </div>
+
+      <!-- CENTER: Search -->
+      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc;">
+        <input type="text" id="search-input" placeholder="Search nodes...">
+        <button id="search-btn">Search</button>
+        <button id="clear-btn">Clear</button>
+        <span id="search-status"></span>
+      </div>
+
+      <!-- RIGHT: Legend -->
+      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; max-width: 1000px;">
+        <details>
+          <summary style="cursor: pointer; font-weight: bold;">Legend</summary>
+          <div style="text-align: left; font-size: 0.9em;">
+            <figure style="margin: 8px 0;">
+              <img src="REMBI-Wheel.svg" width="50%">
+              <figcaption>Figure 2 from: Nat Methods. 2021 Dec;18(12): 1418-1422. doi:
+                <a href="https://doi.org/10.1038/s41592-021-01166-8">10.1038/s41592-021-01166-8</a>
+              </figcaption>
+            </figure>
+            <p style="text-align: justify;">
+              The <strong>LiMi-Model</strong> is based on the OME Data Model. Specifically, the LiMi-Model incorporates a targeted revision of select native OME Data Model elements, together with the introduction of new elements necessitated by recent technological advances. At the same time, the LiMi-Model extends the <strong>REMBI</strong> (Recommended Metadata for Biological Images) guidelines.
+              To highlight this double nature of the LiMi-Model, all elements that have been modified with respect to the OME Data Model are presented using the color palette introduced in Figure 2 of the original REMBI publication (Sarkans et al., 2021. DOI:
+              <a href="https://doi.org/10.1038/s41592-021-01166-8">10.1038/s41592-021-01166-8</a>).
+              On the other hand, all native OME Data Model elements and their children are represented using a light blue color compatible with the OME palette.
+              <br>Designed for broad applicability across the light- and electron-microscopy communities, REMBI defines eight metadata categories required to ensure that microscopy experiments can be reproduced and their data shared and reused.
+              <br>While the LiMi-Model primarily <strong>focuses on REMBI's Image acquisition</strong> category, it also incorporates select attributes from four additional categories: Study component, Biosample, Specimen, and Image data. To make these distinctions clear, the viewer uses a gradient of colors:
+            </p>
+            <ol style="text-align: justify; padding-left: 1.2em;">
+              <li><strong><span style="color: #9FC037;">Light green</span></strong> — <strong>REMBI Image Acquisition</strong>: core image-acquisition metadata.</li>
+              <li><strong><span style="color: #D37C38;">Dark Orange</span></strong> — <strong>REMBI Study Component</strong>: metadata describing the experimental setup.</li>
+              <li><strong><span style="color: #FBAE4D;">Light orange</span></strong> — <strong>REMBI Biosample</strong>: metadata providing biological sample details.</li>
+              <li><strong><span style="color: #DCCC36;">Yellow</span></strong> — <strong>REMBI Specimen</strong>: metadata providing information about the microscopy specimen.</li>
+              <li><strong><span style="color: #65AC6E;">Dark green</span></strong> — <strong>REMBI Image Data</strong>: metadata describing the Pixel structure of the image data.</li>
+            </ol>
+            <p style="text-align: justify;">
+              These color cues help users quickly recognise which part of the metadata each element represents, supporting better documentation, reproducibility, and reuse of microscopy data.
+            </p>
+          </div>
+        </details>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <svg id="chart" width="90%" height="800"></svg>
+
+  <!-- SCRIPTS -->
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="LiMi_Viewer.js"></script>
-</body>
 
+  <!-- BOTTOM BAR -->
+  <div id="bottom-bar" style="
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    background: #f8f8f8;
+    border-top: 1px solid #ccc;
+    padding: 6px 16px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: flex-start;
+    z-index: 100;
+  ">
+    <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 4px 10px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.85em;">
+      <details>
+        <summary style="cursor: pointer; font-weight: bold;">Credits</summary>
+        <p style="text-align: left; margin: 6px 0 0 0; max-width: 420px;">
+          The LiMi-Model Viewer was produced for QUAREP-LiMi by Anthony Asmar with input from Caterina Strambio-De-Castillia, Judith Lacoste and Roland Nitschke, and is released under CC-BY-SA.
+        </p>
+      </details>
+    </div>
+  </div>
+
+</body>
 </html>
