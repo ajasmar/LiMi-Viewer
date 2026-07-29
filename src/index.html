@@ -18,6 +18,10 @@
     .justify {
       text-align: justify;
     }
+    button {
+      cursor: pointer;
+      padding: 3px 8px;
+    }
   </style>
 </head>
 <body>
@@ -42,34 +46,67 @@
       LiMi-Model Viewer
     </h1>
 
-    <!-- ROW 2: Instructions · Search · Legend -->
+    <!-- ROW 2: Instructions · Search & Controls · Legend -->
     <div style="display: flex; align-items: flex-start; justify-content: space-between; width: 100%; gap: 10px;">
 
       <!-- LEFT: Instructions -->
-      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; max-width: 600px;">
+      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; max-width: 320px;">
         <details>
           <summary style="cursor: pointer; font-weight: bold;">Instructions</summary>
           <p style="text-align: left; margin: 8px 0 0 0; font-size: 0.9em;">
             This viewer provides an <strong>interactive interface for exploring the LiMi-Model</strong> — the Light Microscopy Model developed and maintained by <a href="https://quarep.org">QUAREP-LiMi</a> to standardize microscopy metadata specifications.
             <br><br>
-            <u>To navigate</u>: click <strong>the center</strong> of any node to expand or collapse its sub-elements and attributes. Click the <strong>"i" icon</strong> on any node to view a detailed description of that element.
+            To navigate: click the center of any node to expand or collapse its sub-elements and attributes. Click the "i" icon on any node to view a detailed description of that element.
             Nodes shown with a <strong>light grey fill and colored border are attributes</strong>, describing the specific characteristics captured for each element.
-            <br><br>
-            <u>To search</u>: type a term in the search box and click <strong>Search</strong>. All matching nodes will be highlighted in red. Click on a highlighted node to collapse all other branches and expand that node's children, making it your new starting point for exploration. Click <strong>Clear</strong> to return to the default view.
           </p>
         </details>
       </div>
 
-      <!-- CENTER: Search -->
-      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc;">
-        <input type="text" id="search-input" placeholder="Search nodes...">
-        <button id="search-btn">Search</button>
-        <button id="clear-btn">Clear</button>
-        <span id="search-status"></span>
+      <!-- CENTER: Search, Tier Filters, and Tree Controls (Single Row) -->
+      <div style="
+        font-family: sans-serif; 
+        background: rgba(255,255,255,0.9); 
+        padding: 6px 12px; 
+        border-radius: 4px; 
+        border: 1px solid #ccc; 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        flex-wrap: wrap; 
+        justify-content: center;
+      ">
+        <!-- Search Group -->
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <input type="text" id="search-input" placeholder="Search nodes..." style="width: 130px;">
+          <button id="search-btn">Search</button>
+          <button id="clear-btn">Clear</button>
+          <span id="search-status" style="font-size: 0.85em; font-weight: bold; color: #555;"></span>
+        </div>
+
+        <div style="height: 18px; border-left: 1px solid #ccc;"></div>
+
+        <!-- Tier Controls Group -->
+        <div id="tier-controls" style="display: flex; align-items: center; gap: 6px; font-size: 0.9em;">
+          <strong>Tier:</strong>
+          <label><input type="radio" name="tier-option" value="1"> 1</label>
+          <label><input type="radio" name="tier-option" value="2"> 2</label>
+          <label><input type="radio" name="tier-option" value="3"> 3</label>
+          <label><input type="radio" name="tier-option" value="none"> None</label>
+          <label><input type="radio" name="tier-option" value="all" checked> All</label>
+          <button id="display-tier-btn">Display</button>
+        </div>
+
+        <div style="height: 18px; border-left: 1px solid #ccc;"></div>
+
+        <!-- Expand / Collapse Group -->
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button id="expand-all-btn">Expand All</button>
+          <button id="collapse-all-btn">Collapse All</button>
+        </div>
       </div>
 
       <!-- RIGHT: Legend -->
-      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; max-width: 1000px;">
+      <div style="font-family: sans-serif; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; border: 1px solid #ccc; max-width: 320px;">
         <details>
           <summary style="cursor: pointer; font-weight: bold;">Legend</summary>
           <div style="text-align: left; font-size: 0.9em;">
@@ -105,7 +142,7 @@
   </div>
 
   <!-- CHART -->
-  <svg id="chart" width="90%" height="800"></svg>
+  <svg id="chart" width="90%" height="800" style="margin-top: 10px;"></svg>
 
   <!-- SCRIPTS -->
   <script src="https://d3js.org/d3.v7.min.js"></script>

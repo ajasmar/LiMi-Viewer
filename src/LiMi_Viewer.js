@@ -1,6 +1,9 @@
 // Model JSON
 const DATA_URL = `./data/LiMi_Model.json`;
 
+// Global Tier state tracking
+let currentTierFilter = "all";
+
 // Fetch root object and cache-bust via timestamp
 function loadData() {
   const url = `${DATA_URL}?cb=${Date.now()}`; // avoid stale caches
@@ -89,10 +92,9 @@ function escapeHTML(s) {
   );
 }
 
-const svg = d3.select("#chart");
-
 // Ensure the SVG itself is responsive
 // Height is statically set in here, but can be set to percentage if CSS set properly at HTML side
+const svg = d3.select("#chart");
 svg.attr("width", "100%").attr("height", 800);
 
 const svgNode = svg.node();
@@ -128,11 +130,11 @@ infoFO.append("xhtml:div")
   .style("font-size", "12px")
   .style("line-height", "1.3")
   .style("color", "#000")
-  .style("height", "100%")        // Fill the foreignObject completely
+  .style("height", "100%")				// Fill the foreignObject completely
   .style("box-sizing", "border-box")
-  .style("display", "flex")       // Enable flexbox
+  .style("display", "flex")				// Enable flexbox
   .style("flex-direction", "column")
-  .style("overflow", "hidden")    // Disable outer scrolling
+  .style("overflow", "hidden")			// Disable outer scrolling
   .html('<div style="color:#666; padding: 4px;">Click a node\'s "| i" to see details.</div>');
 
 // Resize handler to adjust Info Panel width/position dynamically 
@@ -156,7 +158,7 @@ function handleResize() {
   infoFO
     .attr("x", margin.left + 8)
     .attr("y", panelY + 8)
-    .attr("width", Math.max(0, panelW - 16)) // Prevent negative width
+    .attr("width", Math.max(0, panelW - 16))
     .attr("height", Math.max(0, panelH - 16));
 }
 
@@ -168,7 +170,7 @@ d3.select(window).on("resize", handleResize);
 
 // Enable pan-and-zoom (applies to zoomLayer only and excludes the info box)
 const zoom = d3.zoom()
-  .scaleExtent([0.5, 2]) // min/max zoom
+  .scaleExtent([0.5, 2])
   .on("zoom", ({ transform }) => {
     zoomLayer.attr("transform", transform);
   });
@@ -208,10 +210,18 @@ const keyOf = d => uniqueKey(d);
 function getH(d) { return nodeDims.get(keyOf(d))?.h ?? d.rectH ?? defaultWH.h; }
 function getW(d) { return nodeDims.get(keyOf(d))?.w ?? d.rectW ?? defaultWH.w; }
 
-function anchorLeft(d) { const w = getW(d); return { x: d.y, y: d.x }; }
+function anchorLeft(d) { return { x: d.y, y: d.x }; }
 function anchorRight(d) { const w = getW(d); return { x: d.y + w, y: d.x }; }
 
 function measureAndCache(d, gEl) {
+  const key = keyOf(d);
+  if (nodeDims.has(key)) {
+    const cached = nodeDims.get(key);
+    d.rectW = cached.w;
+    d.rectH = cached.h;
+    return;
+  }
+
   const lbl = gEl.select("text.label").node();
   const btn = gEl.select("text.info-btn").node();
   const padX = 8, padY = 6;
@@ -223,7 +233,7 @@ function measureAndCache(d, gEl) {
     h = bb.height + padY * 2;
   }
   d.rectW = w; d.rectH = h;
-  nodeDims.set(keyOf(d), { w, h });
+  nodeDims.set(key, { w, h });
 }
 
 // Calculation for the connecting line curving
@@ -274,11 +284,11 @@ function update(source) {
     .attr("transform", `translate(${source.y0},${source.x0})`)
     .on("click", (e, d) => {
       if (searchResults.length > 0) {
-        // Capture the key of the clicked node before rebuilding the hierarchy
+		// Capture the key of the clicked node before rebuilding the hierarchy
         const targetKey = uniqueKey(d);
-
+		
         // Rebuild the full hierarchy from scratch so all children
-        // hidden by filterTree() are restored
+        // hidden by filterTree() are restored		
         root = d3.hierarchy(root.data, childAccessor);
         root.x0 = 0;
         root.y0 = 0;
@@ -296,7 +306,7 @@ function update(source) {
         if (targetNode) {
           // Re-open every ancestor from root down to the target
           expandPathTo(targetNode);
-          // Expand the target's own children
+		  // Expand the target's own children
           if (targetNode._children) {
             targetNode.children = targetNode._children;
             targetNode._children = null;
@@ -377,10 +387,26 @@ function update(source) {
     });
 
   const nodeUpdate = enter.merge(nodeSel);
+  
+  // Apply opacity transitions: selected tier matches get full opacity, others dim to 25%
+  nodeUpdate.transition().duration(300)
+    .attr("transform", d => `translate(${d.y},${d.x})`)
+    .style("opacity", d => {
+      if (currentTierFilter === "all") return 1;
+      return d.isTierMatch ? 1 : 0.4;
+    });
+
   nodeUpdate.select("rect")
     .attr("fill", nodeFill)
-    .attr("stroke", nodeStroke)
-    .attr("stroke-width", d => (!d.children && !d._children) ? 4 : 1);
+    .attr("stroke", d => {
+      if (d.isSearchMatch) return "red";
+      if (currentTierFilter !== "all" && d.isTierMatch) return "#e65100";
+      return "#333";
+    })
+    .attr("stroke-width", d => {
+      if (d.isSearchMatch || (currentTierFilter !== "all" && d.isTierMatch)) return 3;
+      return 1;
+    });
 
   nodeUpdate.each(function(d) {
     const gEl = d3.select(this);
@@ -395,8 +421,10 @@ function update(source) {
     btn.attr("x", padX * 2 + bb.width).attr("y", 0);
   });
 
-  nodeUpdate.transition().duration(300).attr("transform", d => `translate(${d.y},${d.x})`);
-  nodeSel.exit().transition().duration(300).attr("transform", `translate(${source.y},${source.x})`).remove();
+  nodeSel.exit().transition().duration(300)
+    .attr("transform", `translate(${source.y},${source.x})`)
+    .style("opacity", 0)
+    .remove();
 
   nodes.forEach(nd => {
     if (!nodeDims.has(keyOf(nd))) {
@@ -417,6 +445,10 @@ function update(source) {
     });
 
   linkEnter.merge(linkSel).transition().duration(300)
+    .style("opacity", d => {
+      if (currentTierFilter === "all") return 1;
+      return d.target.isTierMatch ? 1 : 0.2;
+    })
     .attr("marker-end", d => isSubstitutionEdge(d) ? "url(#arrow-subst)" : null)
     .attr("d", d => isSubstitutionEdge(d) ? linkPathSubst(d) : linkPathNormal(d));
 
@@ -442,10 +474,17 @@ function centerNode(d) {
 function redraw() {
   loadData().then(data => {
     root = d3.hierarchy(data, childAccessor);
+    
+    root.each(d => {
+      d._rawChildren = d.children ? [...d.children] : [];
+      d.isTierMatch = true;
+      d.isSearchMatch = false;
+    });
+
     root.x0 = 0; root.y0 = 0;
     if (root.children) root.children.forEach(collapse);
-    update(root);
-    centerNode(root);
+    
+    window.applyTierFilter();
   }).catch(console.error);
 }
 
@@ -487,7 +526,7 @@ function searchNode(term) {
     }
 
     let hasMatchingDescendant = false;
-
+	
     // Combine currently expanded and collapsed children to check the whole subtree
     const allChildren = [];
     if (node.children) allChildren.push(...node.children);
@@ -528,13 +567,12 @@ function searchNode(term) {
   const statusEl = d3.select("#search-status");
 
   if (searchResults.length > 0) {
-    // Update the graph
-    update(root);
-
+	// Update the graph
+	update(root);
+	
     // Highlight matches and focus on the first one
     highlightAllMatches();
     setTimeout(() => focusOnResult(0), 300);
-
   } else {
     // If no matches, clear highlights and collapse everything
     clearHighlights();
@@ -593,28 +631,29 @@ function focusOnResult(index) {
 
 // Outline all matching nodes in red
 function highlightAllMatches() {
-  clearHighlights();
-
   const matchKeys = new Set(searchResults.map(uniqueKey));
-
-  container.selectAll("g.node")
-    .filter(d => matchKeys.has(uniqueKey(d)))
-    .select("rect")
-    .attr("stroke", "red")
-    .attr("stroke-width", 3)
-    .classed("search-match", true);
+  
+  root.each(d => {
+    d.isSearchMatch = matchKeys.has(uniqueKey(d));
+  });
+  
+  update(root);
 }
 
 // Clear highlights
 function clearHighlights() {
-  container.selectAll("g.node")
-    .select("rect")
+  if (root) {
+    root.each(d => {
+      d.isSearchMatch = false;
+      d.isTierMatch = (currentTierFilter === "all" || d.isTierMatch);
+    });
+  }
+  container.selectAll("g.node").select("rect")
     .attr("stroke", "#333")
-    .attr("stroke-width", 1)
-    .classed("search-match", false);
+    .attr("stroke-width", 1);
 }
 
-function resetSearch() {
+function resetTree() {
   // Clear state variables
   lastSearchTerm = "";
   searchResults = [];
@@ -625,56 +664,13 @@ function resetSearch() {
   d3.select("#search-status").text("");
   clearHighlights();
 
-  // Recursive collapse to return to default state
-  function restoreAndCollapse(d) {
-    if (d.children) {
-      if (!d._children) d._children = [];
-      d._children = d.children;
-      d.children = null;
-    }
-    if (d._children) {
-      d._children.forEach(restoreAndCollapse);
-    }
-  }
-
-  // Sets root's immediate children visible
-  if (root.children) {
-    root.children.forEach(restoreAndCollapse);
-  } else if (root._children) {
-    root._children.forEach(restoreAndCollapse);
-  }
-
-  // Open first level by default
-  if (root._children) {
-    root.children = root._children;
-    root._children = null;
-  }
-
-  // Re-render and center on home node
-  update(root);
-  centerNode(root);
-}
-
-// Reset the tree after searching by reloading the original data and reseting the view
-function resetTree() {
-  // Clear search state
-  lastSearchTerm = "";
-  searchResults = [];
-  currentSearchIndex = 0;
-
-  // Clear UI
-  d3.select("#search-input").property("value", "");
-  d3.select("#search-status").text("");
-  clearHighlights();
-
-  // Re-build the hierarchy from the original data
+  // Collapse to return to default state
   if (root && root.data) {
     const originalData = root.data;
     root = d3.hierarchy(originalData, childAccessor);
     root.x0 = 0;
     root.y0 = 0;
 
-    // Go to default state: collapse everything except the first level
     if (root.children) {
       root.children.forEach(collapseAll);
     }
@@ -686,7 +682,6 @@ function resetTree() {
 }
 
 // Event listeners for search function
-
 d3.select("#search-btn").on("click", () => {
   const term = d3.select("#search-input").property("value");
   searchNode(term);
@@ -719,4 +714,130 @@ d3.select("#search-input").on("input", function() {
     update(root);
     centerNode(root);
   }
+});
+
+// Tier Filter Functions
+let tierResults = [];
+
+window.applyTierFilter = function() {
+  if (!root) return;
+
+  const selectedOption = document.querySelector('input[name="tier-option"]:checked');
+  currentTierFilter = selectedOption ? selectedOption.value : "all";
+
+  // Assign match flags to every node in the hierarchy
+  function assignTierFlags(node) {
+    const t = node.data?.tier;
+    if (currentTierFilter === "all") {
+      node.isTierMatch = true;
+    } else if (currentTierFilter === "none") {
+      node.isTierMatch = (t === undefined || t === null || t === "");
+    } else {
+      node.isTierMatch = (t !== undefined && t !== null && String(t) === String(currentTierFilter));
+    }
+
+    const branches = node._rawChildren || [...(node.children || []), ...(node._children || [])];
+    branches.forEach(assignTierFlags);
+  }
+  assignTierFlags(root);
+
+  tierResults = [];
+
+  // Expand branches down to matching tier nodes (does not expand beyond the tier node)
+  if (currentTierFilter !== "all") {
+    function filterAndExpandTier(node) {
+      const allChildren = node._rawChildren || [...(node.children || []), ...(node._children || [])];
+      let hasMatchingDescendant = false;
+
+      // Evaluate sub-branches first to locate brach expansion limit
+      allChildren.forEach(child => {
+        const descendantMatches = filterAndExpandTier(child);
+        if (descendantMatches) {
+          hasMatchingDescendant = true;
+        }
+      });
+
+      if (node.isTierMatch) {
+        tierResults.push(node);
+      }
+
+      // Only expand the node if it contains a tier match
+      // If the node itself is a tier match with no matches beyond, it stays collapsed
+      if (allChildren.length > 0) {
+        if (hasMatchingDescendant) {
+          node.children = allChildren;
+          node._children = null;
+        } else {
+          node.children = null;
+          node._children = allChildren;
+        }
+      }
+
+      return node.isTierMatch || hasMatchingDescendant;
+    }
+
+    filterAndExpandTier(root);
+  } else {
+    // "Show All" selected: restore default view
+    root.each(d => {
+      d.isTierMatch = true;
+    });
+  }
+
+  update(root);
+
+  if (currentTierFilter !== "all" && tierResults.length > 0) {
+    centerNode(tierResults[0]); 
+  } else {
+    centerNode(root);
+  }
+};
+
+// Event Listeners for Tier controls
+d3.select(document).on("click", (event) => {
+  if (event.target && event.target.id === "display-tier-btn") {
+    window.applyTierFilter();
+  }
+});
+
+d3.selectAll('input[name="tier-option"]').on("change", () => {
+  window.applyTierFilter();
+});
+
+
+// Expand All & Collapse All Controls
+function expandAllNodes(node) {
+  const children = node._rawChildren || [...(node.children || []), ...(node._children || [])];
+  if (children.length > 0) {
+    node.children = children;
+    node._children = null;
+    node.children.forEach(expandAllNodes);
+  }
+}
+
+function collapseAllNodes(node) {
+  const children = node._rawChildren || [...(node.children || []), ...(node._children || [])];
+  if (children.length > 0) {
+    children.forEach(collapseAllNodes);
+  }
+  if (node !== root) {
+    node._children = children.length > 0 ? children : null;
+    node.children = null;
+  }
+}
+
+d3.select("#expand-all-btn").on("click", () => {
+  if (!root) return;
+  expandAllNodes(root);
+  update(root);
+  centerNode(root);
+});
+
+d3.select("#collapse-all-btn").on("click", () => {
+  if (!root) return;
+  if (root.children) {
+    root.children.forEach(collapseAllNodes);
+  }
+  update(root);
+  centerNode(root);
 });
